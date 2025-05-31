@@ -4,7 +4,7 @@ from PIL import Image
 import imageio
 import random
 import argparse
-from latent_action_model import load_latent_action_model, ActionToLatentMLP, ActionStateToLatentMLP
+from models.latent_action_model import load_latent_action_model, ActionToLatentMLP, ActionStateToLatentMLP
 
 # --- Device selection ---
 def get_device():

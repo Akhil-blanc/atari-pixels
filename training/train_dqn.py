@@ -2,13 +2,13 @@ import os
 import numpy as np
 import torch
 from tqdm import trange
-from atari_env import AtariBreakoutEnv
-from dqn_agent import DQNAgent, ReplayBuffer
+from atari_env.atari_env import AtariBreakoutEnv
+from models.dqn_agent import DQNAgent, ReplayBuffer
 import cv2
 import json
 import random
 import argparse
-from rnd import RandomNetworkDistillation
+from models.rnd import RandomNetworkDistillation
 import csv
 import time
 import wandb
@@ -38,6 +38,8 @@ random.seed(config['seed'])
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 def save_episode_data(frames, actions, rewards, skill_level, episode_idx, config):
     """Save frames as PNGs and actions/rewards as JSON."""
@@ -135,6 +137,7 @@ def main():
     os.makedirs(config['checkpoint_dir'], exist_ok=True)
     os.makedirs(config['data_dir'], exist_ok=True)
     os.makedirs(config['actions_dir'], exist_ok=True)
+    print(f"Training DQN on {config['env_name']} with config: {json.dumps(config, indent=2)}")
 
     # --- wandb setup ---
     wandb.init(project="atari-dqn", config=config, name=f"DQN_{config['env_name']}")
@@ -154,7 +157,7 @@ def main():
         shared_replay_buffer = ReplayBuffer(capacity=1000000)
         exploration_agent = DQNAgent(n_actions=config['n_actions'], state_shape=config['state_shape'], replay_buffer=shared_replay_buffer)
         exploitation_agent = DQNAgent(n_actions=config['n_actions'], state_shape=config['state_shape'], replay_buffer=shared_replay_buffer)
-        from rnd import RandomNetworkDistillation
+        from models.rnd import RandomNetworkDistillation
         rnd = RandomNetworkDistillation(state_shape=config['state_shape'], output_dim=512, lr=1e-5, reward_scale=0.1)
         alpha = 0.5
         alpha_decay = 0.99995

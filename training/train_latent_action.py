@@ -15,8 +15,8 @@ import wandb
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from latent_action_data import AtariFramePairDataset
-from latent_action_model import LatentActionVQVAE, load_latent_action_model
+from dataloaders.latent_action_data import AtariFramePairDataset
+from models.latent_action_model import LatentActionVQVAE, load_latent_action_model
 
 # ----------------------
 # Utility Functions

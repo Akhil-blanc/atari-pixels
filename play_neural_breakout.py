@@ -22,7 +22,7 @@ import pygame
 from PIL import Image
 import time
 import argparse
-from latent_action_model import load_latent_action_model, ActionStateToLatentMLP
+from models.latent_action_model import load_latent_action_model, ActionStateToLatentMLP
 
 # --- Configuration ---
 WINDOW_WIDTH = 640

@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 import os
-from atari_env import AtariBreakoutEnv
-from random_agent import RandomAgent
+from atari_env.atari_env import AtariBreakoutEnv
+from models.random_agent import RandomAgent
 
 def test_env_initialization():
     env = AtariBreakoutEnv()
@@ -154,7 +154,7 @@ def test_dqn_optimize_model():
 # TDD: Test for a minimal DQN training loop (should fail until implemented)
 def test_dqn_training_loop():
     from dqn_agent import DQNAgent
-    from atari_env import AtariBreakoutEnv
+    from atari_env.atari_env import AtariBreakoutEnv
     agent = DQNAgent(n_actions=4, state_shape=(8, 84, 84))
     env = AtariBreakoutEnv()
     obs, info = env.reset()

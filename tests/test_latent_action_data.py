@@ -1,8 +1,8 @@
 import pytest
 import torch
 from torch.utils.data import DataLoader
-from latent_action_data import AtariFramePairDataset, get_action_latent_dataloaders
-from latent_action_model import LatentActionVQVAE
+from dataloaders.latent_action_data import AtariFramePairDataset, get_action_latent_dataloaders
+from models.latent_action_model import LatentActionVQVAE
 import os
 import tempfile
 import numpy as np

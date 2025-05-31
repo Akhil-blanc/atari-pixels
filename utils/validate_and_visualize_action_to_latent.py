@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from latent_action_model import ActionStateToLatentMLP, load_latent_action_model
-from latent_action_data import get_action_state_latent_dataloaders
+from models.latent_action_model import ActionStateToLatentMLP, load_latent_action_model
+from dataloaders.latent_action_data import get_action_state_latent_dataloaders
 
 def validate_initial_fire_action():
     """

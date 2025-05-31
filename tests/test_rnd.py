@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import torch
-from rnd import RunningMeanStd, RandomNetworkDistillation
+from models.rnd import RunningMeanStd, RandomNetworkDistillation
 
 class TestRunningMeanStd(unittest.TestCase):
     def test_update_from_moments(self):

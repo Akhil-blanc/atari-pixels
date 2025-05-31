@@ -29,9 +29,9 @@ import json
 import torch
 import numpy as np
 from tqdm import tqdm
-from atari_env import AtariBreakoutEnv
-from random_agent import RandomAgent
-from latent_action_model import load_latent_action_model
+from atari_env.atari_env import AtariBreakoutEnv
+from models.random_agent import RandomAgent
+from models.latent_action_model import load_latent_action_model
 
 def get_device():
     if torch.cuda.is_available():

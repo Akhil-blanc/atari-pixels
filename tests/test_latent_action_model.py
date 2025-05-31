@@ -1,6 +1,6 @@
 import pytest
 import torch
-from latent_action_model import ActionToLatentMLP
+from models.latent_action_model import ActionToLatentMLP
 
 def get_device():
     if torch.cuda.is_available():

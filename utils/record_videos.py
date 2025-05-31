@@ -59,9 +59,9 @@ import os
 import cv2
 import numpy as np
 import torch
-from atari_env import AtariBreakoutEnv
-from dqn_agent import DQNAgent
-from random_agent import RandomAgent
+from atari_env.atari_env import AtariBreakoutEnv
+from models.dqn_agent import DQNAgent
+from models.random_agent import RandomAgent
 import gymnasium as gym
 import argparse
 import time

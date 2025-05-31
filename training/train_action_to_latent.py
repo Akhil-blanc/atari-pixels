@@ -6,8 +6,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import wandb
 import argparse
-from latent_action_model import ActionToLatentMLP, ActionStateToLatentMLP
-from latent_action_data import get_action_latent_dataloaders, get_action_state_latent_dataloaders
+from models.latent_action_model import ActionToLatentMLP, ActionStateToLatentMLP
+from dataloaders.latent_action_data import get_action_latent_dataloaders, get_action_state_latent_dataloaders
 
 # Hyperparameters
 BATCH_SIZE = 256

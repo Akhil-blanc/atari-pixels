@@ -14,8 +14,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import deque
+from collections import deque, OrderedDict
 import random
+
+
 
 class ReplayBuffer:
     """Experience replay buffer for DQN with support for intrinsic and extrinsic rewards."""
@@ -402,7 +404,14 @@ class DQNAgent:
         Too frequent updates can lead to unstable training,
         while too infrequent updates can lead to stale targets.
         """
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        state_dict = self.policy_net.state_dict()
+        cleaned_state_dict = OrderedDict()
+        for k,v in state_dict.items():
+            if k.startswith('_orig_mod.'):
+                cleaned_state_dict[k.replace('_orig_mod.', '')]= v
+            else:
+                cleaned_state_dict[k] = v
+        self.target_net.load_state_dict(cleaned_state_dict)
 
     def anneal_per_beta(self, new_beta):
         if self.prioritized and hasattr(self.replay_buffer, 'anneal_beta'):

@@ -12,7 +12,7 @@ def test_load_vqvae_model():
 
 
 def test_env_step_and_collect():
-    from atari_env import AtariBreakoutEnv
+    from atari_env.atari_env import AtariBreakoutEnv
     env = AtariBreakoutEnv()
     obs, _ = env.reset()
     action = 1

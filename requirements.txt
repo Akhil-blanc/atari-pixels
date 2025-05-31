@@ -2,8 +2,8 @@
 pytest==7.4.4
 # Gymnasium with Atari and ROM auto-acceptance (installs AutoROM and ROMs)
 gymnasium[atari,accept-rom-license]==0.29.1
-torch==2.7.0
-torchvision==0.22.0
+# torch==2.7.0
+# torchvision==0.22.0
 pillow==11.2.1
 numpy==1.24.3
 opencv-python==4.9.0.80
