@@ -274,7 +274,7 @@ class DQNAgent:
             if prioritized:
                 self.replay_buffer = PrioritizedReplayBuffer(capacity=1000000, alpha=per_alpha, beta=per_beta)
             else:
-                self.replay_buffer = ReplayBuffer(capacity=1000000)
+                self.replay_buffer = ReplayBuffer(capacity=500000)
         self.gamma = 0.99  # Discount factor
         self.batch_size = 32
         self.learning_rate = 2.5e-4

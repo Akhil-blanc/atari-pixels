@@ -41,26 +41,26 @@ torch.backends.cudnn.benchmark = False
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
-def save_episode_data(frames, actions, rewards, skill_level, episode_idx, config):
-    """Save frames as PNGs and actions/rewards as JSON."""
-    skill_dir = os.path.join(config['data_dir'], f'skill_level_{skill_level}', f'episode_{episode_idx:03d}')
-    os.makedirs(skill_dir, exist_ok=True)
-    actions_json = []
-    for i, (frame, action, reward) in enumerate(zip(frames, actions, rewards)):
-        frame_path = os.path.join(skill_dir, f'frame_{i:05d}.png')
-        cv2.imwrite(frame_path, frame)
-        actions_json.append({'step': i, 'action': int(action), 'reward': float(reward)})
-    # Save actions JSON
-    actions_file = os.path.join(config['actions_dir'], f'skill_level_{skill_level}_actions.json')
-    os.makedirs(config['actions_dir'], exist_ok=True)
-    if os.path.exists(actions_file):
-        with open(actions_file, 'r') as f:
-            all_actions = json.load(f)
-    else:
-        all_actions = []
-    all_actions.append({'episode': episode_idx, 'actions': actions_json})
-    with open(actions_file, 'w') as f:
-        json.dump(all_actions, f, indent=2)
+# def save_episode_data(frames, actions, rewards, skill_level, episode_idx, config):
+#     """Save frames as PNGs and actions/rewards as JSON."""
+#     skill_dir = os.path.join(config['data_dir'], f'skill_level_{skill_level}', f'episode_{episode_idx:03d}')
+#     os.makedirs(skill_dir, exist_ok=True)
+#     actions_json = []
+#     for i, (frame, action, reward) in enumerate(zip(frames, actions, rewards)):
+#         frame_path = os.path.join(skill_dir, f'frame_{i:05d}.png')
+#         cv2.imwrite(frame_path, frame)
+#         actions_json.append({'step': i, 'action': int(action), 'reward': float(reward)})
+#     # Save actions JSON
+#     actions_file = os.path.join(config['actions_dir'], f'skill_level_{skill_level}_actions.json')
+#     os.makedirs(config['actions_dir'], exist_ok=True)
+#     if os.path.exists(actions_file):
+#         with open(actions_file, 'r') as f:
+#             all_actions = json.load(f)
+#     else:
+#         all_actions = []
+#     all_actions.append({'episode': episode_idx, 'actions': actions_json})
+#     with open(actions_file, 'w') as f:
+#         json.dump(all_actions, f, indent=2)
 
 
 def evaluate_agent(agent, env, n_episodes=10, log_id=None, return_q_values=False):
