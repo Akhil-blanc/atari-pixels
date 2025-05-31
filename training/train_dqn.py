@@ -104,16 +104,16 @@ def evaluate_agent(agent, env, n_episodes=10, log_id=None, return_q_values=False
                 break
         rewards.append(total_reward)
     # Save CSV log
-    os.makedirs('eval_logs', exist_ok=True)
-    if log_id is None:
-        log_id = time.strftime('%Y%m%d_%H%M%S')
-    csv_path = os.path.join('eval_logs', f'eval_log_{log_id}.csv')
-    with open(csv_path, 'w', newline='') as csvfile:
-        fieldnames = ['episode', 'step', 'q_values', 'probabilities', 'action_selected', 'reward']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in log_rows:
-            writer.writerow(row)
+    # os.makedirs('eval_logs', exist_ok=True)
+    # if log_id is None:
+    #     log_id = time.strftime('%Y%m%d_%H%M%S')
+    # csv_path = os.path.join('eval_logs', f'eval_log_{log_id}.csv')
+    # with open(csv_path, 'w', newline='') as csvfile:
+    #     fieldnames = ['episode', 'step', 'q_values', 'probabilities', 'action_selected', 'reward']
+    #     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    #     writer.writeheader()
+    #     for row in log_rows:
+    #         writer.writerow(row)
     if return_q_values:
         return np.mean(rewards), np.concatenate(all_q_values)
     return np.mean(rewards)
@@ -165,10 +165,14 @@ def main():
     # ---
 
     total_steps = 0
-    exploration_rewards = []
-    exploitation_rewards = []
-    intrinsic_rewards_log = []
-    running_avg_rewards = []
+    # exploration_rewards = deque(maxlen=40)
+    # exploitation_rewards = deque(maxlen=40)
+    # # intrinsic_rewards_log = deque(maxlen=1000)
+    # running_avg_rewards = deque(maxlen=1000)
+    # # exploration_rewards = []
+    # # exploitation_rewards = []
+    # intrinsic_rewards_log = []
+    # running_avg_rewards = []
     pbar = trange(config['max_episodes'], desc='Training')
 
     epsilon = max(epsilon_final, epsilon_start - (epsilon_start - epsilon_final) * min(1.0, total_steps / epsilon_decay_steps))
@@ -251,10 +255,10 @@ def main():
                 if terminated or truncated:
                     break
             avg_loss = np.mean(losses) if losses else 0.0
-            exploration_rewards.append(total_combined_reward)
-            exploitation_rewards.append(total_extrinsic_reward)
-            running_avg = np.mean(exploration_rewards[-min(window_size_for_logs, len(exploration_rewards)):])
-            running_avg_rewards.append(running_avg)
+            # exploration_rewards.append(total_combined_reward)
+            # exploitation_rewards.append(total_extrinsic_reward)
+            # running_avg = np.mean(exploration_rewards[-min(window_size_for_logs, len(exploration_rewards)):])
+            # # running_avg_rewards.append(running_avg)
             running_losses.append(avg_loss)
             running_rewards.append(total_combined_reward)
             avg_td_error = np.mean(td_errors) if td_errors else 0.0
@@ -266,10 +270,10 @@ def main():
                 'loss': f"{avg_loss:.3f}",
                 'td_error': f"{avg_td_error:.3f}"
             })
-            if episode > 0 and episode % 10 == 0:
-                last_10_explore = exploration_rewards[-10:]
-                last_10_exploit = exploitation_rewards[-10:]
-                print(f"[Stats] Episodes {episode-9}-{episode} | Explore Avg: {np.mean(last_10_explore):.2f} | Exploit Avg: {np.mean(last_10_exploit):.2f} | {policy_str}")
+            # if episode > 0 and episode % 10 == 0:
+            #     last_10_explore = exploration_rewards[-10:]
+            #     last_10_exploit = exploitation_rewards[-10:]
+            #     print(f"[Stats] Episodes {episode-9}-{episode} | Explore Avg: {np.mean(last_10_explore):.2f} | Exploit Avg: {np.mean(last_10_exploit):.2f} | {policy_str}")
                 
                 
                 
@@ -310,11 +314,11 @@ def main():
                 if terminated or truncated:
                     break
             avg_loss = np.mean(losses) if losses else 0.0
-            exploration_rewards.append(total_combined_reward)
-            exploitation_rewards.append(total_extrinsic_reward)
-            intrinsic_rewards_log.append(np.sum(intrinsic_rewards))
-            running_avg = np.mean(exploration_rewards[-min(window_size_for_logs, len(exploration_rewards)):])
-            running_avg_rewards.append(running_avg)
+            # exploration_rewards.append(total_combined_reward)
+            # exploitation_rewards.append(total_extrinsic_reward)
+            # intrinsic_rewards_log.append(np.sum(intrinsic_rewards))
+            # running_avg = np.mean(exploration_rewards[-min(window_size_for_logs, len(exploration_rewards)):])
+            # running_avg_rewards.append(running_avg)
             running_rewards.append(total_combined_reward)
             running_losses.append(avg_loss)
             avg_td_error = np.mean(td_errors) if td_errors else 0.0
@@ -327,14 +331,14 @@ def main():
                 'loss': f"{avg_loss:.3f}",
                 'td_error': f"{avg_td_error:.3f}"
             })
-            if episode > 0 and episode % 10 == 0:
-                last_10_explore = exploration_rewards[-10:]
-                last_10_exploit = exploitation_rewards[-10:]
-                last_10_intrinsic = intrinsic_rewards_log[-10:]
-                print(f"[Stats] Episodes {episode-9}-{episode} | Explore Avg: {np.mean(last_10_explore):.2f} | Exploit Avg: {np.mean(last_10_exploit):.2f} | {policy_str} | Alpha: {alpha:.3f}")
-                print(f"RND Stats: {rnd.get_stats()}")
-                intrinsic_ratio = np.mean(last_10_intrinsic) / (np.mean(np.abs(last_10_exploit)) + 1e-8)
-                print(f"Intrinsic/Extrinsic ratio: {intrinsic_ratio:.2f}")
+            # if episode > 0 and episode % 10 == 0:
+            #     last_10_explore = exploration_rewards[-10:]
+            #     last_10_exploit = exploitation_rewards[-10:]
+            #     last_10_intrinsic = intrinsic_rewards_log[-10:]
+            #     print(f"[Stats] Episodes {episode-9}-{episode} | Explore Avg: {np.mean(last_10_explore):.2f} | Exploit Avg: {np.mean(last_10_exploit):.2f} | {policy_str} | Alpha: {alpha:.3f}")
+            #     print(f"RND Stats: {rnd.get_stats()}")
+            #     intrinsic_ratio = np.mean(last_10_intrinsic) / (np.mean(np.abs(last_10_exploit)) + 1e-8)
+            #     print(f"Intrinsic/Extrinsic ratio: {intrinsic_ratio:.2f}")
         
         if log_into_wandb:
             # Log to wandb
@@ -350,7 +354,7 @@ def main():
                     'eval/q_value_std': np.std(q_value_dist),
                     'eval/q_value_min': np.min(q_value_dist),
                     'eval/q_value_max': np.max(q_value_dist),
-                    'eval/q_value_hist': wandb.Histogram(q_value_dist),
+                    # 'eval/q_value_hist': wandb.Histogram(q_value_dist),
                     'train/reward_current': running_rewards[-1] if running_rewards else 0,
                     'train/loss_current': running_losses[-1] if running_losses else 0,
                     'train/td_error_current': running_td_errors[-1] if running_td_errors else 0,
@@ -389,4 +393,4 @@ def main():
     print("Training finished.")
 
 if __name__ == '__main__':
-    main() 
+    main()  
