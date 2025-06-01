@@ -291,9 +291,9 @@ def record_gameplay_videos(num_episodes=5, output_dir='videos', skill_level=None
     
     # Try different codecs in order of preference (reordered for better compatibility)
     codecs = [
+        ('mp4v', '.mp4'),   # MPEG-4 codec
         ('MJPG', '.avi'),   # Motion JPEG - most compatible
         ('XVID', '.avi'),   # XVID codec
-        ('mp4v', '.mp4'),   # MPEG-4 codec
         ('avc1', '.mp4'),   # H.264 codec
         ('FMP4', '.mp4'),   # FFMPEG codec
         ('H264', '.mp4'),   # H264 codec
@@ -561,9 +561,9 @@ def record_bulk_videos(
     print(f"[Bulk] Using frame size: {frame_size}")
 
     codecs = [
+        ('mp4v', '.mp4'),
         ('MJPG', '.avi'),
         ('XVID', '.avi'),
-        ('mp4v', '.mp4'),
         ('avc1', '.mp4'),
         ('FMP4', '.mp4'),
         ('H264', '.mp4'),
