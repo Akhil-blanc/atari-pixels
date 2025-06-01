@@ -148,6 +148,49 @@ class ActionStateLatentTripleNPZDataset(Dataset):
             torch.from_numpy(latent_code.astype(np.int64))
         )
 
+class ActionStateLatentTripleNPZBatchedDataset(Dataset):
+    def __init__(self, folder_path):
+        self.files = sorted(glob.glob(os.path.join(folder_path, "batch_*.npz")))
+        if not self.files:
+            raise FileNotFoundError(f"No .npz files found in {folder_path}")
+        
+        self.index_map = []
+        self.actions = []
+        self.latents = []
+        self.frames = []
+        self.num_classes = 4
+        self.latent_dim = 35
+        self.codebook_size = 256
+
+        # Load indices (but not full data if RAM is tight)
+        self.file_sizes = []
+        for file_idx, f in enumerate(self.files):
+            with np.load(f) as data:
+                n_samples = len(data['actions'])
+                self.file_sizes.append(n_samples)
+                for i in range(n_samples):
+                    self.index_map.append((file_idx, i))  # Global index -> (file, local index)
+
+    def __len__(self):
+        return len(self.index_map)
+
+    def __getitem__(self, idx):
+        file_idx, local_idx = self.index_map[idx]
+        file_path = self.files[file_idx]
+        with np.load(file_path) as data:
+            action = data['actions'][local_idx]
+            frames = data['frames'][local_idx]
+            latent_code = data['latents'][local_idx]
+
+        action_onehot = np.zeros(self.num_classes, dtype=np.float32)
+        action_onehot[action] = 1.0
+
+        return (
+            torch.from_numpy(action_onehot),
+            torch.from_numpy(frames.astype(np.float32)),
+            torch.from_numpy(latent_code.astype(np.int64))
+        )
+
 def get_action_latent_dataloaders(batch_size=128, num_workers=0, pin_memory=True, seed=42):
     json_path = os.path.join('data', 'actions', 'action_latent_pairs.json')
     dataset = ActionLatentPairDataset(json_path)
@@ -161,19 +204,22 @@ def get_action_latent_dataloaders(batch_size=128, num_workers=0, pin_memory=True
     return train_loader, val_loader
 
 def get_action_state_latent_dataloaders(batch_size=128, num_workers=0, pin_memory=True, seed=42):
-    npz_path = os.path.join('data', 'actions', 'action_state_latent_triples.npz')
-    json_path = os.path.join('data', 'actions', 'action_state_latent_triples.json')
-    if os.path.exists(npz_path):
-        dataset = ActionStateLatentTripleNPZDataset(npz_path)
-    elif os.path.exists(json_path):
-        dataset = ActionStateLatentTripleDataset(json_path)
+    folder_path = os.path.join('data', 'actions')
+    if os.path.exists(os.path.join(folder_path, 'action_state_latent_triples.npz')):
+        dataset = ActionStateLatentTripleNPZDataset(os.path.join(folder_path, 'action_state_latent_triples.npz'))
+    elif glob.glob(os.path.join(folder_path, 'batch_*.npz')):
+        dataset = ActionStateLatentTripleNPZBatchedDataset(folder_path)
     else:
-        raise FileNotFoundError(f"Neither {npz_path} nor {json_path} found.")
+        raise FileNotFoundError("No suitable data file found in 'data/actions/'.")
+
     n = len(dataset)
     n_train = int(0.8 * n)
     n_val = n - n_train
     torch.manual_seed(seed)
     train_set, val_set = random_split(dataset, [n_train, n_val])
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
-    return train_loader, val_loader 
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
+                            num_workers=num_workers, pin_memory=pin_memory)
+    return train_loader, val_loader
