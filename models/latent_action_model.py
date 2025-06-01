@@ -219,9 +219,10 @@ class LatentActionVQVAE(nn.Module):
     - VectorQuantizer: Discretizes latent
     - Decoder: Reconstructs next frame from quantized latent and current frame
     """
-    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25, encoder="CViViTEncoderCrossAttention"):
+    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25, encoder_type="CViViTEncoderCrossAttention"):
         super().__init__()
-        if encoder == "CViViTEncoderCrossAttention":
+        self.encoder_type = encoder_type
+        if self.encoder_type == "CViViTEncoderCrossAttention":
             self.encoder = CViViTEncoderCrossAttention()
         else:
             self.encoder = Encoder()
@@ -236,8 +237,11 @@ class LatentActionVQVAE(nn.Module):
         
         # Concatenate along channel dimension (dim=1)
         x = torch.cat([frame_t_permuted, frame_tp1_permuted], dim=1)  # (B, 2*C, 160, 210)
-        
-        z = self.encoder(x)  # (B, 128, 5, 7)
+        if self.encoder_type == "CViViTEncoderCrossAttention":
+            # For CViViTEncoderCrossAttention, we need to pass both frames separately
+            z = self.encoder(frame_t_permuted, frame_tp1_permuted)  # (B, 128, 5, 7)
+        else:
+            z = self.encoder(x)  # (B, 128, 5, 7)
         quantized, indices, commitment_loss, codebook_loss = self.vq(z)
         
         # The decoder expects permuted input
