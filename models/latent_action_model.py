@@ -219,9 +219,12 @@ class LatentActionVQVAE(nn.Module):
     - VectorQuantizer: Discretizes latent
     - Decoder: Reconstructs next frame from quantized latent and current frame
     """
-    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25):
+    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25, encoder="CViViTEncoderCrossAttention"):
         super().__init__()
-        self.encoder = Encoder()
+        if encoder == "CViViTEncoderCrossAttention":
+            self.encoder = CViViTEncoderCrossAttention()
+        else:
+            self.encoder = Encoder()
         self.vq = VectorQuantizer(num_embeddings=codebook_size, embedding_dim=embedding_dim, commitment_cost=commitment_cost)
         self.decoder = Decoder()
 
