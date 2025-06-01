@@ -21,25 +21,29 @@ from models.latent_action_model import LatentActionVQVAE, load_latent_action_mod
 # ----------------------
 # Utility Functions
 # ----------------------
+
+
 def psnr(pred, target):
     mse = F.mse_loss(pred, target, reduction='mean').item()
     if mse == 0:
         return 100
     return 20 * math.log10(1.0 / math.sqrt(mse))
 
+
 def ssim(img1, img2):
     # Simple SSIM for 3-channel images, batchwise
     # For full SSIM, use torchmetrics or skimage
     C1 = 0.01 ** 2
     C2 = 0.03 ** 2
-    mu1 = img1.mean(dim=[2,3], keepdim=True)
-    mu2 = img2.mean(dim=[2,3], keepdim=True)
-    sigma1 = ((img1 - mu1) ** 2).mean(dim=[2,3], keepdim=True)
-    sigma2 = ((img2 - mu2) ** 2).mean(dim=[2,3], keepdim=True)
-    sigma12 = ((img1 - mu1) * (img2 - mu2)).mean(dim=[2,3], keepdim=True)
+    mu1 = img1.mean(dim=[2, 3], keepdim=True)
+    mu2 = img2.mean(dim=[2, 3], keepdim=True)
+    sigma1 = ((img1 - mu1) ** 2).mean(dim=[2, 3], keepdim=True)
+    sigma2 = ((img2 - mu2) ** 2).mean(dim=[2, 3], keepdim=True)
+    sigma12 = ((img1 - mu1) * (img2 - mu2)).mean(dim=[2, 3], keepdim=True)
     ssim_map = ((2 * mu1 * mu2 + C1) * (2 * sigma12 + C2)) / \
                ((mu1 ** 2 + mu2 ** 2 + C1) * (sigma1 + sigma2 + C2))
     return ssim_map.mean().item()
+
 
 def codebook_entropy(indices, codebook_size):
     # indices: (B, H, W) or (N,)
@@ -48,6 +52,7 @@ def codebook_entropy(indices, codebook_size):
     entropy = -(prob[prob > 0] * prob[prob > 0].log()).sum().item()
     return entropy, hist.cpu().numpy()
 
+
 def save_checkpoint(state, is_best, checkpoint_dir, step):
     os.makedirs(checkpoint_dir, exist_ok=True)
     path = os.path.join(checkpoint_dir, f"ckpt_{step:06d}.pt")
@@ -55,13 +60,10 @@ def save_checkpoint(state, is_best, checkpoint_dir, step):
     if is_best:
         torch.save(state, os.path.join(checkpoint_dir, "best.pt"))
 
-import os
-import matplotlib.pyplot as plt
-from datetime import datetime
 
 def check_latent_encoding(model, val_loader, device, step, output_dir=None, use_wandb=True):
     """Check if the latent space encodes the ball position.
-    
+
     Args:
         model: The VQ-VAE model
         val_loader: Validation data loader
@@ -71,141 +73,152 @@ def check_latent_encoding(model, val_loader, device, step, output_dir=None, use_
         use_wandb: Whether to log to wandb
     """
     os.makedirs(output_dir, exist_ok=True) if output_dir else None
-    
+
     with torch.no_grad():
         # Get a batch containing the ball
         frame_t, frame_tp1 = next(iter(val_loader))
         frame_t, frame_tp1 = frame_t.to(device), frame_tp1.to(device)
-        
+
         # 1. Identify ball position by frame difference
-        frame_diff = torch.abs(frame_tp1 - frame_t).sum(1)  # Sum across RGB channels
-        ball_mask = (frame_diff > 0.05).float()  # Create binary mask where ball is moving
-        
+        # Sum across RGB channels
+        frame_diff = torch.abs(frame_tp1 - frame_t).sum(1)
+        # Create binary mask where ball is moving
+        ball_mask = (frame_diff > 0.05).float()
+
         # 2. Get latent representation
         # First, do normal forward pass
         recon, indices, commit_loss, codebook_loss = model(frame_t, frame_tp1)
-        
+
         # Then get the latent representation by calling encoder directly
         x = torch.cat([frame_t, frame_tp1], dim=1)
         z = model.encoder(x)
-        
+
         # 3. Visualize to compare ball position and latent activations
         for i in range(min(4, frame_t.size(0))):
             fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-            
+
             # Original frame with ball
             axes[0].imshow(frame_tp1[i].permute(1, 2, 0).cpu().numpy())
             axes[0].set_title('Frame with Ball')
-            
+
             # Ball mask (where movement is detected)
             axes[1].imshow(ball_mask[i].cpu().numpy(), cmap='hot')
             axes[1].set_title('Ball Position')
-            
+
             # Latent space activation (mean across channels)
             latent_vis = z[i].mean(0).cpu().numpy()
-            latent_vis = (latent_vis - latent_vis.min()) / (latent_vis.max() - latent_vis.min() + 1e-8)
+            latent_vis = (latent_vis - latent_vis.min()) / \
+                (latent_vis.max() - latent_vis.min() + 1e-8)
             axes[2].imshow(latent_vis, cmap='viridis')
             axes[2].set_title('Latent Space Activation')
-            
+
             plt.tight_layout()
-            
+
             # Save locally if output_dir provided
             if output_dir:
-                filename = os.path.join(output_dir, f'ball_encoding_ex{i}_step{step}.png')
+                filename = os.path.join(
+                    output_dir, f'ball_encoding_ex{i}_step{step}.png')
                 fig.savefig(filename)
                 print(f"Saved {filename}")
-            
+
             # Log to wandb if requested
             if use_wandb:
                 wandb.log({f'ball_encoding_{i}': wandb.Image(fig)}, step=step)
-            
+
             plt.close(fig)  # Close to free memory
+
 
 def test_encoder_decoder(model, val_loader, device, step, output_dir=None, use_wandb=True):
     """Test encoder/decoder by enhancing ball signal in latent space."""
     os.makedirs(output_dir, exist_ok=True) if output_dir else None
-    
+
     with torch.no_grad():
         # Get frames with ball movement
         frame_t, frame_tp1 = next(iter(val_loader))
         frame_t, frame_tp1 = frame_t.to(device), frame_tp1.to(device)
-        
+
         # 1. Normal forward pass - this handles permutations internally
         recon, indices, _, _ = model(frame_t, frame_tp1)
-        
+
         # 2. Get latent representation - we need to permute inputs like the model does
         frame_t_permuted = frame_t.permute(0, 1, 3, 2)
         frame_tp1_permuted = frame_tp1.permute(0, 1, 3, 2)
         x = torch.cat([frame_t_permuted, frame_tp1_permuted], dim=1)
         z = model.encoder(x)
-        
+
         # 3. Find ball position
         frame_diff = torch.abs(frame_tp1 - frame_t).sum(1, keepdim=True)
         ball_mask = (frame_diff > 0.05).float()
-        
+
         # 4. Upsample ball mask to latent space dimensions
-        ball_mask_latent = F.interpolate(ball_mask, size=z.shape[2:], mode='nearest')
-        
+        ball_mask_latent = F.interpolate(
+            ball_mask, size=z.shape[2:], mode='nearest')
+
         # 5. Enhance latent representation at ball position - use stronger enhancement
         z_enhanced = z.clone()
         # Using 20.0 instead of 5.0 for stronger enhancement
         z_enhanced = z_enhanced + 20.0 * ball_mask_latent.expand_as(z_enhanced)
-        
+
         # 6. Check if codes are changing after enhancement
         # Flatten z like in the VQ layer
-        z_flat = z.permute(0, 2, 3, 1).contiguous().view(-1, model.vq.embedding_dim)
-        z_enhanced_flat = z_enhanced.permute(0, 2, 3, 1).contiguous().view(-1, model.vq.embedding_dim)
-        
+        z_flat = z.permute(0, 2, 3, 1).contiguous(
+        ).view(-1, model.vq.embedding_dim)
+        z_enhanced_flat = z_enhanced.permute(
+            0, 2, 3, 1).contiguous().view(-1, model.vq.embedding_dim)
+
         # Compute distances to codebook for original z
-        d_original = (z_flat.pow(2).sum(1, keepdim=True) 
-                     - 2 * z_flat @ model.vq.embeddings.weight.t() 
-                     + model.vq.embeddings.weight.pow(2).sum(1))
+        d_original = (z_flat.pow(2).sum(1, keepdim=True)
+                      - 2 * z_flat @ model.vq.embeddings.weight.t()
+                      + model.vq.embeddings.weight.pow(2).sum(1))
         indices_original = torch.argmin(d_original, dim=1)
-        
+
         # Compute distances to codebook for enhanced z
-        d_enhanced = (z_enhanced_flat.pow(2).sum(1, keepdim=True) 
-                     - 2 * z_enhanced_flat @ model.vq.embeddings.weight.t() 
-                     + model.vq.embeddings.weight.pow(2).sum(1))
+        d_enhanced = (z_enhanced_flat.pow(2).sum(1, keepdim=True)
+                      - 2 * z_enhanced_flat @ model.vq.embeddings.weight.t()
+                      + model.vq.embeddings.weight.pow(2).sum(1))
         indices_enhanced = torch.argmin(d_enhanced, dim=1)
-        
+
         # Reshape indices to match latent space dimensions
-        indices_original = indices_original.view(z.shape[0], z.shape[2], z.shape[3])
-        indices_enhanced = indices_enhanced.view(z.shape[0], z.shape[2], z.shape[3])
-        
+        indices_original = indices_original.view(
+            z.shape[0], z.shape[2], z.shape[3])
+        indices_enhanced = indices_enhanced.view(
+            z.shape[0], z.shape[2], z.shape[3])
+
         # Create binary mask showing where codes changed
         code_changes = (indices_original != indices_enhanced).float()
-        
+
         # 7. Pass enhanced latent through VQ and decoder
         quantized_enhanced, indices_enhanced_out, _, _ = model.vq(z_enhanced)
-        
+
         # IMPORTANT: Use permuted frame_t for decoder like in model.forward
-        recon_permuted_enhanced = model.decoder(quantized_enhanced, frame_t_permuted)
-        
+        recon_permuted_enhanced = model.decoder(
+            quantized_enhanced, frame_t_permuted)
+
         # IMPORTANT: Permute the output back to match original frame dimensions
         recon_enhanced = recon_permuted_enhanced.permute(0, 1, 3, 2)
-        
+
         # 8. Compare results - now both recon and recon_enhanced have the same shape
         for i in range(min(4, frame_t.size(0))):
             fig, axes = plt.subplots(1, 5, figsize=(25, 5))
-            
+
             # Normalize for display to avoid clipping warnings
             def normalize_for_display(img_tensor):
                 img_np = img_tensor.permute(1, 2, 0).cpu().numpy()
                 img_np = np.clip(img_np, 0, 1)
                 return img_np
-            
+
             # Target frame
             axes[0].imshow(normalize_for_display(frame_tp1[i]))
             axes[0].set_title('Target Frame')
-            
+
             # Normal reconstruction
             axes[1].imshow(normalize_for_display(recon[i]))
             axes[1].set_title('Normal Reconstruction')
-            
+
             # Enhanced latent reconstruction
             axes[2].imshow(normalize_for_display(recon_enhanced[i]))
             axes[2].set_title('Enhanced Reconstruction')
-            
+
             # Difference between normal and enhanced
             diff = torch.abs(recon_enhanced[i] - recon[i]).sum(0).cpu().numpy()
             # Use epsilon to avoid division by zero
@@ -217,24 +230,27 @@ def test_encoder_decoder(model, val_loader, device, step, output_dir=None, use_w
                 diff = np.zeros_like(diff)
             axes[3].imshow(diff, cmap='hot')
             axes[3].set_title('Reconstruction Difference')
-            
+
             # Code changes visualization
             axes[4].imshow(code_changes[i].cpu().numpy(), cmap='hot')
             axes[4].set_title('Codebook Changes')
-            
+
             plt.tight_layout()
-            
+
             # Save locally if output_dir provided
             if output_dir:
-                filename = os.path.join(output_dir, f'latent_manipulation_ex{i}_step{step}.png')
+                filename = os.path.join(
+                    output_dir, f'latent_manipulation_ex{i}_step{step}.png')
                 fig.savefig(filename)
                 print(f"Saved {filename}")
-            
+
             # Log to wandb if requested
             if use_wandb:
-                wandb.log({f'latent_manipulation_{i}': wandb.Image(fig)}, step=step)
-            
+                wandb.log(
+                    {f'latent_manipulation_{i}': wandb.Image(fig)}, step=step)
+
             plt.close(fig)  # Close to free memory
+
 
 def print_model_structure(model):
     """Print the structure of a model's state_dict keys."""
@@ -246,10 +262,11 @@ def print_model_structure(model):
         elif i == 10:
             print("  ...")
 
+
 def analyze_checkpoint(checkpoint_path, data_dir, output_dir, device=None, grayscale=False):
     """
     Load a model from checkpoint and run diagnostic visualizations.
-    
+
     Args:
         checkpoint_path: Path to the model checkpoint
         data_dir: Directory with data
@@ -265,40 +282,43 @@ def analyze_checkpoint(checkpoint_path, data_dir, output_dir, device=None, grays
         else:
             device = torch.device('cpu')
     print(f"Using device: {device}")
-    
+
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
-
     model, step = load_latent_action_model(checkpoint_path, device)
-    
+
     model = model.to(device)
     model.eval()
-    
+
     print(f"Loaded checkpoint from step {step}")
-    
+
     # Setup data
     val_set = AtariFramePairDataset(data_dir, split='val', grayscale=grayscale)
     val_loader = DataLoader(val_set, batch_size=8, shuffle=True, num_workers=2)
-    
+
     # Run diagnostics
     print("Running latent encoding analysis...")
-    check_latent_encoding(model, val_loader, device, step, 
-                          output_dir=os.path.join(output_dir, 'latent_encoding'),
+    check_latent_encoding(model, val_loader, device, step,
+                          output_dir=os.path.join(
+                              output_dir, 'latent_encoding'),
                           use_wandb=False)
-    
+
     print("Running encoder-decoder test...")
     test_encoder_decoder(model, val_loader, device, step,
-                         output_dir=os.path.join(output_dir, 'encoder_decoder_test'),
+                         output_dir=os.path.join(
+                             output_dir, 'encoder_decoder_test'),
                          use_wandb=False)
-    
+
     print(f"Analysis complete. Results saved to {output_dir}")
 
 # ----------------------
 # Training Function
 # ----------------------
+
+
 def train(args):
-       # Device setup
+    # Device setup
     if torch.cuda.is_available():
         device = torch.device('cuda')
         # CUDA-specific optimization settings
@@ -323,12 +343,18 @@ def train(args):
     wandb.init(project="latent-action", config=vars(args))
 
     # Data
-    train_set = AtariFramePairDataset(args.data_dir, split='train', grayscale=args.grayscale)
-    val_set = AtariFramePairDataset(args.data_dir, split='val', grayscale=args.grayscale)
-    test_set = AtariFramePairDataset(args.data_dir, split='test', grayscale=args.grayscale)
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=pin_memory)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
+    train_set = AtariFramePairDataset(
+        args.data_dir, split='train', grayscale=args.grayscale)
+    val_set = AtariFramePairDataset(
+        args.data_dir, split='val', grayscale=args.grayscale)
+    test_set = AtariFramePairDataset(
+        args.data_dir, split='test', grayscale=args.grayscale)
+    train_loader = DataLoader(train_set, batch_size=args.batch_size,
+                              shuffle=True, num_workers=args.num_workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_set, batch_size=args.batch_size,
+                            shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size,
+                             shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
 
     # Print data statistics
     def get_stats(dataset, name):
@@ -358,9 +384,10 @@ def train(args):
 
     # Optimizer & Scheduler
     optimizer = Adam(model.parameters(), lr=args.lr)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.max_iters, eta_min=args.lr_min)
+    scheduler = CosineAnnealingLR(
+        optimizer, T_max=args.max_iters, eta_min=args.lr_min)
 
-    scaler = torch.cuda.amp.GradScaler() if use_amp and device.type == 'cuda' else None
+    scaler = torch.amp.GradScaler() if use_amp and device.type == 'cuda' else None
 
     # Training state
     best_val_loss = float('inf')
@@ -380,10 +407,12 @@ def train(args):
             frame_t, frame_tp1 = next(data_iter)
         frame_t, frame_tp1 = frame_t.to(device), frame_tp1.to(device)
         with torch.amp.autocast(device.type, enabled=(scaler is not None)):
-            recon, indices, commit_loss, codebook_loss = model(frame_t, frame_tp1)
-            #rec_loss = F.mse_loss(recon, frame_tp1)
+            recon, indices, commit_loss, codebook_loss = model(
+                frame_t, frame_tp1)
+            # rec_loss = F.mse_loss(recon, frame_tp1)
             frame_diff = torch.abs(frame_tp1 - frame_t)
-            motion_weight = 1.0 + 10.0 * (frame_diff.sum(dim=1, keepdim=True) > 0.05).float()
+            motion_weight = 1.0 + 10.0 * \
+                (frame_diff.sum(dim=1, keepdim=True) > 0.05).float()
             rec_loss = (motion_weight * (recon - frame_tp1)**2).mean()
 
             # Entropy regularization
@@ -398,7 +427,8 @@ def train(args):
             if args.grad_clip > 0:
                 if scaler is not None:
                     scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), args.grad_clip)
             if scaler is not None:
                 scaler.step(optimizer)
                 scaler.update()
@@ -431,15 +461,19 @@ def train(args):
         # Save reconstructions
         if (global_step + 1) % args.recon_interval == 0:
             with torch.no_grad():
-                grid = make_grid(torch.cat([frame_t, frame_tp1, recon], dim=0), nrow=args.batch_size)
-                wandb.log({'reconstructions': [wandb.Image(grid, caption=f'Step {global_step+1}')]}, step=global_step+1)
+                grid = make_grid(
+                    torch.cat([frame_t, frame_tp1, recon], dim=0), nrow=args.batch_size)
+                wandb.log({'reconstructions': [wandb.Image(
+                    grid, caption=f'Step {global_step+1}')]}, step=global_step+1)
         # Codebook reset
         if (global_step + 1) % args.codebook_reset_interval == 0:
             with torch.no_grad():
                 used = (hist > 0).sum()
                 if used < 0.5 * 256:
-                    print(f"Resetting unused codebook entries at step {global_step+1}")
-                    model.vq.embeddings.weight.data[hist == 0] = torch.randn_like(model.vq.embeddings.weight.data[hist == 0])
+                    print(
+                        f"Resetting unused codebook entries at step {global_step+1}")
+                    model.vq.embeddings.weight.data[hist == 0] = torch.randn_like(
+                        model.vq.embeddings.weight.data[hist == 0])
         # Checkpoint
         if (global_step + 1) % args.ckpt_interval == 0:
             save_checkpoint({
@@ -453,7 +487,7 @@ def train(args):
         if (global_step + 1) % args.diagnostic_interval == 0:
             print(f"Running diagnostics at step {global_step+1}")
             check_latent_encoding(
-                model, val_loader, device, global_step + 1, 
+                model, val_loader, device, global_step + 1,
                 output_dir=None,  # Skip local saving during training
                 use_wandb=True
             )
@@ -464,7 +498,8 @@ def train(args):
             )
         # Validation
         if (global_step + 1) % args.val_interval == 0:
-            val_loss = evaluate(model, val_loader, device, scaler, pbar_desc='Val')
+            val_loss = evaluate(model, val_loader, device,
+                                scaler, pbar_desc='Val')
             wandb.log({'val/loss': val_loss}, step=global_step+1)
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -482,6 +517,7 @@ def train(args):
     wandb.log({'test/loss': test_loss}, step=global_step)
     print(f"Test loss: {test_loss}")
 
+
 def evaluate(model, loader, device, scaler, pbar_desc=None):
     model.eval()
     losses = []
@@ -493,17 +529,21 @@ def evaluate(model, loader, device, scaler, pbar_desc=None):
         for frame_t, frame_tp1 in loader_iter:
             frame_t, frame_tp1 = frame_t.to(device), frame_tp1.to(device)
             with torch.amp.autocast(device.type, enabled=(scaler is not None)):
-                recon, indices, commit_loss, codebook_loss = model(frame_t, frame_tp1)
+                recon, indices, commit_loss, codebook_loss = model(
+                    frame_t, frame_tp1)
                 rec_loss = F.mse_loss(recon, frame_tp1)
                 loss = rec_loss + commit_loss + codebook_loss
             losses.append(loss.item())
     model.train()
     return np.mean(losses)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='bulk_videos', help='Directory with episode folders')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='Checkpoint directory')
+    parser.add_argument('--data_dir', type=str, default='bulk_videos',
+                        help='Directory with episode folders')
+    parser.add_argument('--checkpoint_dir', type=str,
+                        default='checkpoints', help='Checkpoint directory')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--max_iters', type=int, default=10000)
@@ -520,9 +560,12 @@ if __name__ == "__main__":
     parser.add_argument('--codebook_reset_interval', type=int, default=2500)
 
     # python train_latent_action.py --analyze --analysis_output_dir='analysis_results'
-    parser.add_argument('--analyze', action='store_true', help='Analyze latest checkpoint')
-    parser.add_argument('--analysis_output_dir', type=str, default='analysis', help='Output directory for analysis')
-    parser.add_argument('--diagnostic_interval', type=int, default=50000, help='Steps between diagnostic visualizations')
+    parser.add_argument('--analyze', action='store_true',
+                        help='Analyze latest checkpoint')
+    parser.add_argument('--analysis_output_dir', type=str,
+                        default='analysis', help='Output directory for analysis')
+    parser.add_argument('--diagnostic_interval', type=int,
+                        default=50000, help='Steps between diagnostic visualizations')
     args = parser.parse_args()
 
     # In the main part, before train() call:
@@ -530,7 +573,8 @@ if __name__ == "__main__":
         # Find the latest checkpoint
         checkpoint_dir = os.path.join(args.checkpoint_dir, 'latent_action')
         print(checkpoint_dir)
-        checkpoints = sorted(glob.glob(os.path.join(checkpoint_dir, 'ckpt_*.pt')))
+        checkpoints = sorted(
+            glob.glob(os.path.join(checkpoint_dir, 'ckpt_*.pt')))
         if not checkpoints:
             checkpoint_path = os.path.join(checkpoint_dir, 'best.pt')
             print(checkpoint_path)
@@ -549,4 +593,4 @@ if __name__ == "__main__":
         )
         exit(0)  # Exit after analysis
 
-    train(args) 
+    train(args)

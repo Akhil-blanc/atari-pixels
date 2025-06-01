@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
+
 def load_latent_action_model(model_path, device):
     model = LatentActionVQVAE()
     checkpoint = torch.load(model_path, map_location=device)
@@ -14,6 +17,72 @@ def load_latent_action_model(model_path, device):
             fixed_state_dict[k] = v
     model.load_state_dict(fixed_state_dict)
     return model, checkpoint['step']
+
+class CrossAttentionBlock(nn.Module):
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, dropout=0.1):
+        super().__init__()
+        self.norm1_q = nn.LayerNorm(dim)
+        self.norm1_kv = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Linear(int(dim * mlp_ratio), dim),
+        )
+
+    def forward(self, q, kv):
+        q_norm = self.norm1_q(q)
+        kv_norm = self.norm1_kv(kv)
+        attended, _ = self.attn(q_norm, kv_norm, kv_norm)
+        x = q + attended
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+class CViViTEncoderCrossAttention(nn.Module):
+    def __init__(self, in_channels=3, embed_dim=128, patch_size=(5,7), num_heads=4, num_layers=4):
+        super().__init__()
+        self.patch_h, self.patch_w = patch_size
+
+        self.conv_stem = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, embed_dim, kernel_size=(4,7), stride=2, padding=(1,3))  # -> (B, C, 5, 7)
+        )
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, 1 + patch_size[0] * patch_size[1], embed_dim))
+
+        self.transformer = nn.ModuleList([
+            CrossAttentionBlock(embed_dim, num_heads) for _ in range(num_layers)
+        ])
+
+    def forward(self, frame_t, frame_tp1):
+        # Stem encode both frames
+        feat_t = self.conv_stem(frame_t)     # (B, C, 5, 7)
+        feat_tp1 = self.conv_stem(frame_tp1) # (B, C, 5, 7)
+
+        B, C, H, W = feat_tp1.shape
+
+        tokens_q = feat_tp1.flatten(2).transpose(1, 2)  # (B, N, C)
+        tokens_kv = feat_t.flatten(2).transpose(1, 2)
+
+        cls = self.cls_token.expand(B, -1, -1)
+        tokens_q = torch.cat([cls, tokens_q], dim=1)
+        tokens_q = tokens_q + self.pos_embed[:, :tokens_q.shape[1]]
+
+        for block in self.transformer:
+            tokens_q = block(tokens_q, tokens_kv)
+
+        x = tokens_q[:, 1:, :].transpose(1, 2).view(B, C, H, W)  # Discard CLS, reshape back
+        return x
 
 class Encoder(nn.Module):
     """

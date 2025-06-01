@@ -17,6 +17,8 @@ import torch.optim as optim
 from collections import deque, OrderedDict
 import random
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 
 class ReplayBuffer:
