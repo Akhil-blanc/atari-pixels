@@ -22,7 +22,11 @@ import pygame
 from PIL import Image
 import time
 import argparse
-from models.latent_action_model import load_latent_action_model, ActionStateToLatentMLP
+from collections import OrderedDict
+from models.latent_action_model import load_latent_action_model, ActionStateToLatentMLP, ActionToLatentMLP
+
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 # --- Configuration ---
 WINDOW_WIDTH = 640
@@ -47,6 +51,8 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--temperature', type=float, default=0.01, help='Sampling temperature for latent prediction')
+    parser.add_argument('--model', type=str, choices=['action_to_latent', 'action_state_to_latent'], default='action_to_latent',
+                        help='Model type to use for action to latent mapping')
     args = parser.parse_args()
     
     # Initialize pygame
@@ -70,9 +76,32 @@ def main():
     
     # Load action-to-latent model
     print("[INFO] Loading action-to-latent model...")
-    action_model = ActionStateToLatentMLP().to(device)
-    ckpt = torch.load('checkpoints/latent_action/action_state_to_latent_best.pt', map_location=device)
-    action_model.load_state_dict(ckpt['model_state_dict'])
+    if args.model == 'action_state_to_latent':
+        action_model = ActionStateToLatentMLP().to(device)
+        ckpt = torch.load('checkpoints/latent_action/action_state_to_latent_best.pt', map_location=device)
+        original_state_dict = ckpt['model_state_dict']
+        # Adjust state dict keys for compatibility
+        new_state_dict = OrderedDict()
+        for key, value in original_state_dict.items():
+            if key.startswith('_orig_mod'):
+                new_key = key.replace('_orig_mod.', '')
+            else:
+                new_key = key
+            new_state_dict[new_key] = value
+        action_model.load_state_dict(new_state_dict)
+    else:
+        action_model = ActionToLatentMLP().to(device)
+        ckpt = torch.load('checkpoints/latent_action/action_to_latent_best.pt', map_location=device)
+        original_state_dict = ckpt['model_state_dict']
+        # Adjust state dict keys for compatibility
+        new_state_dict = OrderedDict()
+        for key, value in original_state_dict.items():
+            if key.startswith('_orig_mod'):
+                new_key = key.replace('_orig_mod.', '')
+            else:
+                new_key = key
+            new_state_dict[new_key] = value
+        action_model.load_state_dict(new_state_dict)
     action_model.eval()
     if device.type == 'cuda':
         action_model = torch.compile(action_model)
@@ -154,7 +183,10 @@ def main():
             
             # Get action prediction
             onehot = action_to_onehot(action_idx, device)
-            logits = action_model(onehot, stacked_frames)
+            if args.model == 'action_state_to_latent':
+                logits = action_model(onehot, stacked_frames)
+            else:
+                logits = action_model(onehot)
             indices = action_model.sample_latents(logits, temperature=args.temperature)
             
             # Reshape indices and get embeddings
