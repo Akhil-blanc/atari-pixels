@@ -7,6 +7,7 @@ videos/
 eval_logs/
 wandb/
 bulk_videos/
+bulk_videos_skiing/
 *reconstructions*
 comparison_frames/
 debug_frames/

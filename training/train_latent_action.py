@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 from dataloaders.latent_action_data import AtariFramePairDataset
-from models.latent_action_model import LatentActionVQVAE_EMA, load_latent_action_model
+from models.latent_action_model import LatentActionVQVAE, LatentActionVQVAE_EMA, load_latent_action_model
 
 # ----------------------
 # Utility Functions
@@ -370,7 +370,12 @@ def train(args):
     print("-----------------------")
 
     # Model
-    model = LatentActionVQVAE_EMA()
+    if args.model == 'original':
+        model= LatentActionVQVAE(codebook_size=args.codebook_size)
+    elif args.model == 'cvivit':
+        model = LatentActionVQVAE(codebook_size=args.codebook_size, encoder_type='CViViTEncoderCrossAttention')
+    elif args.model == 'ema':
+        model = LatentActionVQVAE_EMA(codebook_size=args.codebook_size)
     model = model.to(device)
     # Conditionally compile the model
     if compile_mode is not None:
@@ -416,7 +421,7 @@ def train(args):
             rec_loss = (motion_weight * (recon - frame_tp1)**2).mean()
 
             # Entropy regularization
-            entropy, hist = codebook_entropy(indices, 256)
+            entropy, hist = codebook_entropy(indices, model.vq.num_embeddings)
             entropy_reg = -args.entropy_weight * entropy
             loss = rec_loss + commit_loss + codebook_loss + entropy_reg
         if scaler is not None:
@@ -558,6 +563,9 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt_interval', type=int, default=5000)
     parser.add_argument('--val_interval', type=int, default=1000)
     parser.add_argument('--codebook_reset_interval', type=int, default=2500)
+    parser.add_argument('--codebook_size', type=int, default=256,
+                        help='Size of the VQ codebook (number of latent codes)')
+    parser.add_argument('--model', type=str, choices=['original','ema','cvivit'])
 
     # python train_latent_action.py --analyze --analysis_output_dir='analysis_results'
     parser.add_argument('--analyze', action='store_true',

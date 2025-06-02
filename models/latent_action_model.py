@@ -5,9 +5,9 @@ import torch.nn.functional as F
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
-def load_latent_action_model(model_path,model_name, device):
+def load_latent_action_model(model_path,model_name,device,codebook_size=256, ):
     if model_name =="LatentActionVQVAE_EMA":
-        model = LatentActionVQVAE_EMA()
+        model = LatentActionVQVAE_EMA(codebook_size=codebook_size)
     else:
         model = LatentActionVQVAE(encoder_type=model_name)
     checkpoint = torch.load(model_path, map_location=device)

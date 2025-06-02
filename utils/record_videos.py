@@ -59,7 +59,7 @@ import os
 import cv2
 import numpy as np
 import torch
-from atari_env.atari_env import AtariBreakoutEnv
+from atari_env.atari_env import AtariBreakoutEnv, AtariskiingEnv
 from models.dqn_agent import DQNAgent
 from models.random_agent import RandomAgent
 import gymnasium as gym
@@ -508,6 +508,7 @@ def record_gameplay_videos(num_episodes=5, output_dir='videos', skill_level=None
 
 def record_bulk_videos(
     total_videos=10,
+    game_name='Breakout-v5',
     output_dir='videos',
     percent_random=50,
     skill_level=None,
@@ -527,21 +528,24 @@ def record_bulk_videos(
     else:
         os.makedirs(output_dir, exist_ok=True)
 
-    env = AtariBreakoutEnv()
-    random_agent = RandomAgent(n_actions=4)
-    dqn_agent = DQNAgent(n_actions=4, state_shape=(8, 84, 84))
-    if skill_level is not None:
-        model_path = os.path.join('checkpoints', f'dqn_skill_{skill_level}.pth')
-        checkpoint_name = f'skill_{skill_level}'
-    else:
-        model_path = os.path.join('checkpoints', 'dqn_latest.pth')
-        checkpoint_name = 'latest'
-    if os.path.exists(model_path):
-        dqn_agent.policy_net.load_state_dict(torch.load(model_path))
-        dqn_agent.policy_net.eval()
-        print(f"Model loaded from {model_path}. Device: {next(dqn_agent.policy_net.parameters()).device}")
-    else:
-        print(f"Warning: No checkpoint found at {model_path}, using untrained model")
+    if game_name == 'Breakout-v5':
+        env = AtariBreakoutEnv()
+    elif game_name == 'Skiing-v5':
+        env = AtariskiingEnv()
+    random_agent = RandomAgent(n_actions=env.action_space.n)
+    dqn_agent = DQNAgent(n_actions=env.action_space.n, state_shape=(8, 84, 84))
+    # if skill_level is not None:
+    #     model_path = os.path.join('checkpoints', f'dqn_skill_{skill_level}.pth')
+    #     checkpoint_name = f'skill_{skill_level}'
+    # else:
+    #     model_path = os.path.join('checkpoints', 'dqn_latest.pth')
+    #     checkpoint_name = 'latest'
+    # if os.path.exists(model_path):
+    #     dqn_agent.policy_net.load_state_dict(torch.load(model_path))
+    #     dqn_agent.policy_net.eval()
+    #     print(f"Model loaded from {model_path}. Device: {next(dqn_agent.policy_net.parameters()).device}")
+    # else:
+    #     print(f"Warning: No checkpoint found at {model_path}, using untrained model")
 
     # Get frame size if not provided
     if frame_size is None:
@@ -688,6 +692,7 @@ def record_bulk_videos(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Record gameplay videos for Atari Breakout with random and trained agents')
     parser.add_argument('--num_episodes', type=int, default=5, help='Number of episodes to record for each agent')
+    parser.add_argument('--game', type=str, choices=['Breakout-v0', 'Skiing-v5'], default='Breakout-v0', help='Atari game to play default: Breakout-v0')
     parser.add_argument('--output_dir', type=str, default='videos', help='Directory to save videos')
     parser.add_argument('--skill_level', type=int, choices=[0,1,2,3], help='Skill level checkpoint to use (0-3). If not specified, uses latest checkpoint.')
     parser.add_argument('--no_sync', action='store_true', help='Use a temporary directory to avoid iCloud sync issues')
@@ -701,6 +706,7 @@ if __name__ == '__main__':
     if args.bulk:
         record_bulk_videos(
             total_videos=args.total_videos,
+            game_name=args.game,
             output_dir=args.output_dir,
             percent_random=args.percent_random,
             skill_level=args.skill_level,

@@ -68,7 +68,7 @@ def main():
     
     # Load world model
     print("[INFO] Loading world model...")
-    world_model, _ = load_latent_action_model('checkpoints/latent_action/best.pt', device)
+    world_model, _ = load_latent_action_model('checkpoints/latent_action/best.pt',"original", device)
     world_model.to(device)
     world_model.eval()
     if device.type == 'cuda':
@@ -78,7 +78,7 @@ def main():
     print("[INFO] Loading action-to-latent model...")
     if args.model == 'action_state_to_latent':
         action_model = ActionStateToLatentMLP().to(device)
-        ckpt = torch.load('checkpoints/latent_action/action_state_to_latent_best.pt', map_location=device)
+        ckpt = torch.load('checkpoints/latent_action/action_state_to_latent_best.pt',  map_location=device)
         original_state_dict = ckpt['model_state_dict']
         # Adjust state dict keys for compatibility
         new_state_dict = OrderedDict()
