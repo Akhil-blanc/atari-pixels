@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 from dataloaders.latent_action_data import AtariFramePairDataset
-from models.latent_action_model import LatentActionVQVAE, load_latent_action_model
+from models.latent_action_model import LatentActionVQVAE_EMA, load_latent_action_model
 
 # ----------------------
 # Utility Functions
@@ -370,7 +370,7 @@ def train(args):
     print("-----------------------")
 
     # Model
-    model = LatentActionVQVAE()
+    model = LatentActionVQVAE_EMA()
     model = model.to(device)
     # Conditionally compile the model
     if compile_mode is not None:
@@ -466,14 +466,14 @@ def train(args):
                 wandb.log({'reconstructions': [wandb.Image(
                     grid, caption=f'Step {global_step+1}')]}, step=global_step+1)
         # Codebook reset
-        if (global_step + 1) % args.codebook_reset_interval == 0:
-            with torch.no_grad():
-                used = (hist > 0).sum()
-                if used < 0.5 * 256:
-                    print(
-                        f"Resetting unused codebook entries at step {global_step+1}")
-                    model.vq.embeddings.weight.data[hist == 0] = torch.randn_like(
-                        model.vq.embeddings.weight.data[hist == 0])
+        # if (global_step + 1) % args.codebook_reset_interval == 0:
+        #     with torch.no_grad():
+        #         used = (hist > 0).sum()
+        #         if used < 0.5 * 256:
+        #             print(
+        #                 f"Resetting unused codebook entries at step {global_step+1}")
+        #             model.vq.embeddings.weight.data[hist == 0] = torch.randn_like(
+        #                 model.vq.embeddings.weight.data[hist == 0])
         # Checkpoint
         if (global_step + 1) % args.ckpt_interval == 0:
             save_checkpoint({

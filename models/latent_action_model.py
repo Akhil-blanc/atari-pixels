@@ -328,3 +328,183 @@ class ActionStateToLatentMLP(nn.Module):
         batch, latent_dim, codebook_size = probs.shape
         samples = torch.multinomial(probs.view(-1, codebook_size), 1).view(batch, latent_dim)
         return samples
+
+
+
+class VectorQuantizerEMA(nn.Module):
+    """
+    Vector quantization layer for VQ-VAE with EMA updates.
+    - Codebook size: 256
+    - Embedding dim: 128
+    - Uses EMA for codebook updates instead of gradient-based learning
+    - Returns quantized latents, indices, and losses.
+    """
+    def __init__(self, num_embeddings=256, embedding_dim=128, commitment_cost=0.25, ema_decay=0.99):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.num_embeddings = num_embeddings
+        self.commitment_cost = commitment_cost
+        self.ema_decay = ema_decay
+        
+        # Register codebook and EMA statistics as buffers (not parameters)
+        self.register_buffer('codebook', torch.randn(num_embeddings, embedding_dim))
+        self.register_buffer('ema_count', torch.zeros(num_embeddings))
+        self.register_buffer('ema_weight', self.codebook.clone())
+        
+        # Initialize codebook with uniform distribution
+        self.codebook.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+        
+    def forward(self, z):
+        # z: (B, C, H, W)
+        # Flatten spatial dimensions for vector quantization
+        z_flat = z.permute(0,2,3,1).contiguous().view(-1, self.embedding_dim)  # (B*H*W, C)
+        
+        # Compute L2 distance to codebook
+        # ||z - e||^2 = ||z||^2 + ||e||^2 - 2 z*e
+        d = (z_flat.pow(2).sum(1, keepdim=True)
+             - 2 * z_flat @ self.codebook.t()
+             + self.codebook.pow(2).sum(1))
+        
+        # Find nearest codebook entries
+        encoding_indices = torch.argmin(d, dim=1)
+        min_encodings = torch.zeros(encoding_indices.shape[0], self.num_embeddings, device=z.device)
+        min_encodings.scatter_(1, encoding_indices.unsqueeze(1), 1)
+        
+        # Retrieve quantized vectors
+        quantized_flat = torch.matmul(min_encodings, self.codebook)
+        quantized = quantized_flat.view(z.shape[0], z.shape[2], z.shape[3], self.embedding_dim)
+        quantized = quantized.permute(0,3,1,2).contiguous()
+        
+        # EMA update for codebook entries (only during training)
+        if self.training:
+            with torch.no_grad():
+                # Count usage of each codebook entry and compute the batch sum of z vectors
+                encodings_sum = min_encodings.sum(0)
+                encodings_batch = torch.matmul(min_encodings.t(), z_flat)
+                
+                # In-place update of ema_count and ema_weight
+                self.ema_count.mul_(self.ema_decay).add_(encodings_sum * (1 - self.ema_decay))
+                self.ema_weight.mul_(self.ema_decay).add_(encodings_batch * (1 - self.ema_decay))
+                
+                # Normalize weights by count to update the codebook in place
+                n = torch.sum(self.ema_count)
+                normalized_count = (self.ema_count + 1e-5) / (n + self.num_embeddings * 1e-5) * n
+                self.codebook.copy_(self.ema_weight / normalized_count.unsqueeze(1))
+                
+                # Optional: Random restart for unused codebook entries
+                unused = (self.ema_count < 1e-4)
+                n_unused = torch.sum(unused).int().item()
+                if n_unused > 0:
+                    random_indices = torch.randperm(z_flat.shape[0])[:n_unused]
+                    unused_indices = torch.nonzero(unused).squeeze()
+                    # Ensure indices are of the proper shape (if only one index, unsqueeze)
+                    if unused_indices.dim() == 0:
+                        unused_indices = unused_indices.unsqueeze(0)
+                    self.codebook[unused_indices] = z_flat[random_indices].to(self.codebook.dtype)
+        
+        # Use straight-through estimator: detach quantized tensor for the encoder gradient
+        quantized_sg = quantized.detach()
+        z_sg = z.detach()
+        
+        # Loss calculations:
+        # - codebook_loss: encourage codebook vectors to be close to encoder outputs (now handled by EMA)
+        # - commitment_loss: encourage encoder outputs to commit to codebook representations
+        codebook_loss = torch.mean((z_sg - quantized)**2)  # This won't affect gradients due to EMA
+        commitment_loss = self.commitment_cost * F.mse_loss(quantized_sg, z)
+        
+        # Straight-through estimator
+        quantized = z + (quantized - z).detach()
+        
+        return quantized, encoding_indices.view(z.shape[0], z.shape[2], z.shape[3]), commitment_loss, codebook_loss
+
+
+class Decoder_adjusted(nn.Module):
+    def __init__(self, in_channels=128, cond_channels=3,
+                 hidden_dims=[512, 512, 256, 128, 64], out_channels=3):
+        super().__init__()
+
+        # Conditioning pathway
+        self.cond_conv = nn.Sequential(
+            nn.Conv2d(cond_channels, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+        # Combine latent and condition
+        self.fc = nn.Conv2d(in_channels + 128, hidden_dims[0], kernel_size=1)
+
+        # Upsampling layers
+        up_layers = []
+        c_in = hidden_dims[0]
+        for c_out in hidden_dims[1:]:
+            up_layers.append(nn.ConvTranspose2d(c_in, c_out, kernel_size=4, stride=2, padding=1))
+            up_layers.append(nn.BatchNorm2d(c_out))
+            up_layers.append(nn.ReLU(inplace=True))
+            c_in = c_out
+
+        # Final upsampling layer (before interpolation)
+        up_layers.append(nn.ConvTranspose2d(c_in, out_channels, kernel_size=4, stride=2, padding=1))
+        self.up = nn.Sequential(*up_layers)
+
+        # Trainable refinement after interpolation
+        self.final_adjust = nn.Sequential(
+            nn.Upsample(size=(160, 210), mode='bilinear', align_corners=False),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            # nn.Tanh()  # Optional: constrain output to [-1, 1] if your images are normalized
+        )
+
+    def forward(self, z, cond):
+        cond_feat = self.cond_conv(cond)
+        cond_feat = F.interpolate(cond_feat, size=z.shape[2:], mode='bilinear', align_corners=False)
+        x = torch.cat([z, cond_feat], dim=1)
+        x = self.fc(x)
+        x = self.up(x)
+        x = self.final_adjust(x)
+        return x
+class LatentActionVQVAE_EMA(nn.Module):
+    """
+    Full VQ-VAE model for latent action prediction with EMA updates.
+    - Encoder: Extracts latent from (frame_t, frame_t+1)
+    - VectorQuantizerEMA: Discretizes latent using EMA-updated codebook
+    - Decoder: Reconstructs next frame from quantized latent and current frame
+    """
+    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25, 
+                 ema_decay=0.99, encoder_type="CViViTEncoderCrossAttention"):
+        super().__init__()
+        self.encoder_type = encoder_type
+        if self.encoder_type == "CViViTEncoderCrossAttention":
+            self.encoder = CViViTEncoderCrossAttention()
+        else:
+            # Fallback to original Encoder if needed
+            raise NotImplementedError("Only CViViTEncoderCrossAttention is implemented")
+        
+        self.vq = VectorQuantizerEMA(
+            num_embeddings=codebook_size, 
+            embedding_dim=embedding_dim, 
+            commitment_cost=commitment_cost,
+            ema_decay=ema_decay
+        )
+        self.decoder = Decoder_adjusted()
+
+    def forward(self, frame_t, frame_tp1, return_latent=False):
+        # Original frames: (B, C, 210, 160)
+        # Need to permute to: (B, C, 160, 210) for the model's internal processing
+        frame_t_permuted = frame_t.permute(0, 1, 3, 2)  # (B, C, 210, 160) -> (B, C, 160, 210)
+        frame_tp1_permuted = frame_tp1.permute(0, 1, 3, 2)  # (B, C, 210, 160) -> (B, C, 160, 210)
+        
+        # For CViViTEncoderCrossAttention, we need to pass both frames separately
+        z = self.encoder(frame_t_permuted, frame_tp1_permuted)  # (B, 128, 5, 7)
+        quantized, indices, commitment_loss, codebook_loss = self.vq(z)
+        
+        # The decoder expects permuted input
+        recon_permuted = self.decoder(quantized, frame_t_permuted)
+        
+        # IMPORTANT: Permute back to match original frame shape (B, C, 210, 160)
+        # We need to explicitly do this to ensure the output matches the target shape
+        recon = recon_permuted.permute(0, 1, 3, 2)  # (B, C, 160, 210) -> (B, C, 210, 160)
+        
+        if return_latent:
+            return recon, indices, commitment_loss, codebook_loss, z
+        else:
+            return recon, indices, commitment_loss, codebook_loss
