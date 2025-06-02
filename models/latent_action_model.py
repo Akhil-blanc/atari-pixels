@@ -339,7 +339,7 @@ class VectorQuantizerEMA(nn.Module):
     - Uses EMA for codebook updates instead of gradient-based learning
     - Returns quantized latents, indices, and losses.
     """
-    def __init__(self, num_embeddings=256, embedding_dim=128, commitment_cost=0.25, ema_decay=0.99):
+    def __init__(self, num_embeddings=32, embedding_dim=128, commitment_cost=0.25, ema_decay=0.99):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
@@ -469,7 +469,7 @@ class LatentActionVQVAE_EMA(nn.Module):
     - VectorQuantizerEMA: Discretizes latent using EMA-updated codebook
     - Decoder: Reconstructs next frame from quantized latent and current frame
     """
-    def __init__(self, codebook_size=256, embedding_dim=128, commitment_cost=0.25, 
+    def __init__(self, codebook_size=32, embedding_dim=128, commitment_cost=0.25, 
                  ema_decay=0.99, encoder_type="CViViTEncoderCrossAttention"):
         super().__init__()
         self.encoder_type = encoder_type
