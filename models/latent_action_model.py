@@ -5,8 +5,11 @@ import torch.nn.functional as F
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
-def load_latent_action_model(model_path, device):
-    model = LatentActionVQVAE()
+def load_latent_action_model(model_path,model_name, device):
+    if model_name =="LatentActionVQVAE_EMA":
+        model = LatentActionVQVAE_EMA()
+    else:
+        model = LatentActionVQVAE(encoder_type=model_name)
     checkpoint = torch.load(model_path, map_location=device)
     # Fix state dict keys by removing the '*orig*mod.' prefix
     fixed_state_dict = {}
