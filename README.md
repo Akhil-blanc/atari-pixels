@@ -13,6 +13,54 @@ This projects aims to create a neural playable version of Atari Breakout by lear
 [![Watch the video](https://img.youtube.com/vi/H8Eh1HlLzZM/0.jpg)](https://www.youtube.com/watch?v=H8Eh1HlLzZM)
 
 
+## Getting Started
+
+### 1. Install Dependencies and Atari ROMs
+```bash
+pip install -r requirements.txt
+python -m AutoROM --accept-license
+```
+## Experiments
+The following experiments were conducted from my side:
+
+1. Convolution stems with temporal cross attention encoder inspired by C-ViViT
+2. Exponential moving average for codebook updates to prevent codebook collapse
+3. Decrease number of embeddings in codebook to 32
+4. Try the model with different atari game with clock - Skiing-v5
+
+You can run the experiments by running the following command:
+
+Download the checkpoints from [here](https://drive.google.com/drive/folders/1igtad_5vXiiHaEYYfZ8gt0y-yjfg-2P0?usp=sharing) and place them in the `checkpoints` folder.
+
+Then run the following commands to play the game with different models:
+
+```bash
+
+0. Original VQ-VAE model with 256 embeddings and no EMA updates
+
+```bash
+python play_neural_breakout.py --model action_state_to_latent --vqvae_type standard --world_model_path .\checkpoints\original\best.pt --game breakout
+
+```
+
+1. Convolution stems with temporal cross attention encoder inspired by C-ViViT
+```bash
+python play_neural_breakout.py --model action_state_to_latent --vqvae_type cvivit --world_model_path .\checkpoints\cvivit\best.pt --game breakout
+```
+
+2. Exponential moving average for codebook updates to prevent codebook collapse
+```bash
+python play_neural_breakout.py --model action_state_to_latent --vqvae_type ema --world_model_path .\checkpoints\cvivit-ema\best.pt --game breakout
+```
+3. Decrease number of embeddings in codebook to 32
+```bash
+python play_neural_breakout.py --model action_state_to_latent --vqvae_type ema --world_model_path .\checkpoints\cvivit-ema-32\best.pt --game breakout
+```
+4. Try the model with different atari game with clock - Skiing-v5
+```bash
+python play_neural_breakout.py --model action_state_to_latent --vqvae_type cvivit --world_model_path .\checkpoints\new_game\best.pt --game skiing
+```
+
 ## Part 1: DQN Training & Exploration
 - Implements a Deep Q-Network (DQN) agent for Atari Breakout.
 - Supports two exploration strategies:
@@ -25,14 +73,6 @@ This projects aims to create a neural playable version of Atari Breakout by lear
 See [part1.md](part1.md) for full details, implementation, and next steps.
 
 ---
-
-## Getting Started
-
-### 1. Install Dependencies and Atari ROMs
-```bash
-pip install -r requirements.txt
-python -m AutoROM --accept-license
-```
 
 ### 2. Train the DQN Agent
 - **Default (temperature-based exploration):**

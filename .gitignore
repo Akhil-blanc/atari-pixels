@@ -1,7 +1,6 @@
 atari/
 .pytest_cache/
 __pycache__/
-data/
 checkpoints/
 videos/
 eval_logs/
